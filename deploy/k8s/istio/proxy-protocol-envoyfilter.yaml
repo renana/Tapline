@@ -1,0 +1,5 @@
+# Intentionally empty of live objects.
+#
+# PROXY protocol on Istio inbound (:15006) was for Tapline *in front of* Envoy.
+# The sandwich is Envoy → Tapline → app, so Envoy has already decrypted and
+# the Sidecar CR defaultEndpoint is the retarget. Do not apply that filter.

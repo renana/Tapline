@@ -1,0 +1,145 @@
+# App + Tapline, Istio-injected.
+# inbound:  mesh → Envoy → Tapline :15003 → app :8080
+# outbound: app → nft → Tapline :15005 → orig-dst → Envoy :15001 → mesh
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: app-with-tapline
+spec:
+  workloadSelector:
+    labels:
+      tapline-front: "true"
+  ingress:
+    - port:
+        number: 8080
+        name: http
+        protocol: HTTP
+      defaultEndpoint: 127.0.0.1:15003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-with-tapline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-with-tapline
+      tapline-front: "true"
+  template:
+    metadata:
+      labels:
+        app: app-with-tapline
+        tapline-front: "true"
+      annotations:
+        sidecar.istio.io/inject: "true"
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+        traffic.sidecar.istio.io/excludeInboundPorts: "15003,15005,15002"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "15003,15005,15002"
+    spec:
+      initContainers:
+        # Webhook prepends istio-init. This runs after.
+        - name: nft-outbound
+          image: tapline-nft:0.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              POD_IP="${POD_IP:-127.0.0.1}"
+              nft delete table ip tapline 2>/dev/null || true
+              nft -f - <<EOF
+              table ip tapline {
+                chain output {
+                  type nat hook output priority -150; policy accept;
+                  skuid 1338 return
+                  tcp dport { 53, 15000, 15001, 15002, 15003, 15005, 15006, 15008, 15021, 15090 } return
+                  udp dport { 15000, 15001, 15002, 15003, 15005, 15006, 15008, 15021, 15090 } return
+                  skuid 1337 ip daddr { 127.0.0.0/8, ${POD_IP} } meta l4proto tcp redirect to :15003
+                  skuid 1337 ip daddr { 127.0.0.0/8, ${POD_IP} } meta l4proto udp redirect to :15003
+                  skuid 1337 return
+                  meta l4proto tcp redirect to :15005
+                  meta l4proto udp redirect to :15005
+                }
+              }
+              EOF
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: true
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+      containers:
+        - name: tapline
+          image: tapline:0.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TAPLINE_INBOUND
+              value: "0.0.0.0:15003"
+            - name: TAPLINE_APP
+              value: "127.0.0.1:8080"
+            - name: TAPLINE_OUTBOUND
+              value: "0.0.0.0:15005"
+            - name: TAPLINE_ADMIN
+              value: "127.0.0.1:15002"
+            - name: TAPLINE_RUN_ORIGIN
+              value: "0"
+            - name: TAPLINE_PROXY_PROTOCOL
+              value: "0"
+            - name: TAPLINE_SINK
+              value: "stdout"
+            - name: TAPLINE_INSTANCE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: TAPLINE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: tap-in
+              containerPort: 15003
+              protocol: TCP
+            - name: tap-out
+              containerPort: 15005
+              protocol: TCP
+          startupProbe:
+            tcpSocket: { port: 15003 }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            tcpSocket: { port: 15003 }
+          securityContext:
+            runAsUser: 1338
+            runAsGroup: 1338
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: "1", memory: 256Mi }
+        - name: app
+          image: your-app:latest
+          ports:
+            - name: http
+              containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-with-tapline
+spec:
+  selector:
+    app: app-with-tapline
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

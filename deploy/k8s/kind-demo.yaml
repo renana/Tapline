@@ -1,0 +1,70 @@
+# Standalone Tapline (no Istio) so Vector has audit JSON to ship.
+# Image must already be on the node: kind load docker-image tapline:0.1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tapline-demo
+  labels:
+    app: tapline-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tapline-demo
+  template:
+    metadata:
+      labels:
+        app: tapline-demo
+    spec:
+      containers:
+        - name: tapline
+          image: tapline:0.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TAPLINE_INBOUND
+              value: "0.0.0.0:15000"
+            - name: TAPLINE_APP
+              value: "127.0.0.1:15001"
+            - name: TAPLINE_OUTBOUND
+              value: "0"
+            - name: TAPLINE_ADMIN
+              value: "127.0.0.1:15002"
+            - name: TAPLINE_RUN_ORIGIN
+              value: "1"
+            - name: TAPLINE_SINK
+              value: "stdout"
+            - name: TAPLINE_INSTANCE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: TAPLINE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - containerPort: 15000
+              name: inbound
+          readinessProbe:
+            tcpSocket:
+              port: 15000
+            periodSeconds: 3
+        - name: probe
+          image: curlimages/curl:8.11.1
+          command: ["sh", "-c"]
+          args:
+            - |
+              until curl -sf http://127.0.0.1:15000/health; do sleep 1; done
+              while true; do curl -sf http://127.0.0.1:15000/health >/dev/null; sleep 2; done
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tapline-demo
+spec:
+  selector:
+    app: tapline-demo
+  ports:
+    - name: inbound
+      port: 15000
+      targetPort: 15000

@@ -1,0 +1,18 @@
+[package]
+name = "tapline"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny sidecar TCP proxy in front of Envoy (nft REDIRECT)."
+
+[[bin]]
+name = "tapline"
+path = "src/main.rs"
+
+[dependencies]
+hpack = "0.3"
+httparse = "1"
+libc = "0.2"
+ring = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }

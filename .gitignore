@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*~
+
+# Rust
+target/
+
+# Go comparison port, if built in-tree
+/proxy/tapline
+*.exe
+*.test
+
+# Dashboard, if a package.json is added later
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
