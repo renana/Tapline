@@ -1,5 +1,7 @@
 # Tapline
 
+Designed and built in collaboration with Grok.
+
 Tapline is a transparent TCP and UDP sidecar. It sits in the pod network namespace after nftables `REDIRECT`, splices each accepted flow to its original destination, and emits one JSON record per hop.
 
 It is an observation point, not a dataplane. Routing, retries, load balancing, and mesh mTLS remain the responsibility of the proxy in front of or behind it (Envoy, or another proxy that has already terminated encryption).
@@ -154,6 +156,6 @@ The dashboard under `src/` queries VictoriaLogs when `VICTORIALOGS_URL` is set, 
 
 ## License
 
-Copyright 2026 The Tapline Authors.
+Copyright 2026 Renana Yacobi.
 
 Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE).
